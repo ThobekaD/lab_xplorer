@@ -1,0 +1,35 @@
+# Netlify configuration file
+
+# Build settings
+[build]
+  # Directory to publish (the output of your build process)
+  publish = "dist"
+  # Command to build your site
+  command = "npm run build"
+
+# Redirects and rewrites
+[[redirects]]
+  # Redirect all paths to index.html for SPA routing
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and caching
+[[headers]]
+  # Define headers for all files
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.pexels.com https://*.supabase.co; connect-src 'self' https://*.supabase.co https://api.elevenlabs.io https://api.tavus.io;"
+
+# Environment variable configuration
+[build.environment]
+  NODE_VERSION = "18"
+
+# Custom domain configuration
+# This is where you'll configure your IONOS domain
+[build.processing]
+  skip_processing = false
