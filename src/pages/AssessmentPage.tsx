@@ -5,17 +5,15 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, CheckSquare, Clock, AlertTriangle, Award, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckSquare, Clock, AlertTriangle, Award, Loader2, Brain, BookOpen } from 'lucide-react';
 import { AssessmentEngine } from '@/components/assessment/AssessmentEngine';
 import { AssessmentList } from '@/components/assessment/AssessmentList';
-import { AnalyticsTracker } from '@/components/assessment/AnalyticsTracker';
-import { useAssessment, useAssessments, useAssessmentAttempts } from '@/hooks/useAssessment';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { supabase } from '@/lib/supabase';
 import type { Assessment, AssessmentAttempt } from '@/types/assessment';
 
 export function AssessmentPage() {
-  const { experimentId, assessmentType } = useParams<{ experimentId: string; assessmentType: string }>();
+  const { experimentSlug, assessmentType } = useParams<{ experimentSlug: string; assessmentType: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   
@@ -24,13 +22,44 @@ export function AssessmentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
+  const [experimentId, setExperimentId] = useState<string | null>(null);
   
-  // Fetch assessments directly from Supabase
+  // First, get experiment ID from slug
+  useEffect(() => {
+    const fetchExperimentId = async () => {
+      if (!experimentSlug) {
+        setError('Missing experiment identifier');
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('experiments')
+          .select('id')
+          .eq('slug', experimentSlug)
+          .single();
+          
+        if (error) throw error;
+        
+        if (data) {
+          setExperimentId(data.id);
+        } else {
+          setError('Experiment not found');
+        }
+      } catch (err) {
+        console.error('Error fetching experiment:', err);
+        setError('Failed to load experiment');
+      }
+    };
+    
+    fetchExperimentId();
+  }, [experimentSlug]);
+  
+  // Fetch assessments once we have experiment ID
   useEffect(() => {
     const fetchAssessments = async () => {
       if (!experimentId || !assessmentType) {
-        setError('Missing experiment ID or assessment type');
-        setIsLoading(false);
         return;
       }
       
@@ -47,12 +76,14 @@ export function AssessmentPage() {
         if (error) throw error;
         
         if (!data || data.length === 0) {
-          setAssessmentData([]);
+          // Create mock assessment data if none exists
+          const mockAssessment = createMockAssessment(experimentId, assessmentType);
+          setAssessmentData([mockAssessment]);
           setIsLoading(false);
           return;
         }
         
-        // Group assessments by type to create assessment objects
+        // Group questions into assessments
         const assessmentMap = new Map<string, any>();
         
         data.forEach(question => {
@@ -69,7 +100,7 @@ export function AssessmentPage() {
               time_limit_minutes: getTimeLimit(question.assessment_type),
               max_attempts: 3,
               passing_score: getPassingScore(question.assessment_type),
-              difficulty: question.difficulty,
+              difficulty: question.difficulty || 1,
               is_active: true,
               created_at: new Date().toISOString(),
             });
@@ -117,7 +148,8 @@ export function AssessmentPage() {
           .from('assessment_attempts')
           .select('*')
           .eq('user_id', user.id)
-          .eq('assessment_id', selectedAssessment.id);
+          .eq('assessment_id', selectedAssessment.id)
+          .order('completed_at', { ascending: false });
           
         if (error) throw error;
         
@@ -130,14 +162,130 @@ export function AssessmentPage() {
     fetchAttempts();
   }, [user?.id, selectedAssessment]);
   
+  const createMockAssessment = (expId: string, type: string): Assessment => {
+    const mockQuestions = generateMockQuestions(type);
+    
+    return {
+      id: `mock-${type}-${expId}`,
+      title: getAssessmentTitle(type),
+      description: getAssessmentDescription(type),
+      experiment_id: expId,
+      assessment_type: type as 'pre_lab' | 'post_lab' | 'checkpoint',
+      questions: mockQuestions,
+      time_limit_minutes: getTimeLimit(type),
+      max_attempts: 3,
+      passing_score: getPassingScore(type),
+      difficulty: 2,
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
+  };
+  
+  const generateMockQuestions = (type: string) => {
+    const baseQuestions = [
+      {
+        id: `q1-${type}`,
+        question_text: "What is the primary purpose of this lab experiment?",
+        question_type: "multiple_choice" as const,
+        options: [
+          "To demonstrate basic scientific principles",
+          "To practice laboratory safety",
+          "To collect and analyze data",
+          "All of the above"
+        ],
+        correct_answer: "All of the above",
+        explanation: "Lab experiments serve multiple purposes including demonstrating principles, practicing safety, and developing analytical skills.",
+        points: 1,
+        difficulty: 1,
+        topic: "Laboratory Fundamentals",
+      },
+      {
+        id: `q2-${type}`,
+        question_text: "Which safety equipment should always be worn in the laboratory?",
+        question_type: "multiple_choice" as const,
+        options: [
+          "Safety goggles only",
+          "Lab coat only", 
+          "Safety goggles and lab coat",
+          "No special equipment needed"
+        ],
+        correct_answer: "Safety goggles and lab coat",
+        explanation: "Both safety goggles and lab coats are essential for protection in laboratory environments.",
+        points: 1,
+        difficulty: 1,
+        topic: "Laboratory Safety",
+      },
+      {
+        id: `q3-${type}`,
+        question_text: "What should you do if you spill a chemical?",
+        question_type: "multiple_choice" as const,
+        options: [
+          "Ignore it and continue working",
+          "Clean it up immediately without telling anyone",
+          "Notify the instructor immediately",
+          "Leave it for someone else to clean"
+        ],
+        correct_answer: "Notify the instructor immediately",
+        explanation: "Chemical spills should always be reported to ensure proper cleanup and safety procedures are followed.",
+        points: 1,
+        difficulty: 2,
+        topic: "Emergency Procedures",
+      }
+    ];
+    
+    if (type === 'post_lab') {
+      baseQuestions.push({
+        id: `q4-${type}`,
+        question_text: "What was the most important concept you learned in this experiment?",
+        question_type: "short_answer" as const,
+        options: [],
+        correct_answer: "Understanding of experimental methodology and data analysis",
+        explanation: "Post-lab reflections help consolidate learning and identify key concepts.",
+        points: 2,
+        difficulty: 2,
+        topic: "Reflection",
+      });
+    }
+    
+    return baseQuestions;
+  };
+  
   const handleSelectAssessment = (assessment: Assessment) => {
     setSelectedAssessment(assessment);
   };
   
-  const handleAssessmentComplete = (results: AssessmentAttempt) => {
-    // In a real implementation, this would save the results to the database
+  const handleAssessmentComplete = async (results: any) => {
     console.log('Assessment completed:', results);
-    setAttempts(prev => [...prev, results]);
+    
+    // Save attempt to database
+    if (user?.id && selectedAssessment) {
+      try {
+        const attemptData = {
+          assessment_id: selectedAssessment.id,
+          user_id: user.id,
+          answers: results.answers || {},
+          score: results.score || 0,
+          max_score: results.maxScore || selectedAssessment.questions.length,
+          percentage: results.percentage || 0,
+          time_taken: results.timeElapsed || 0,
+          hints_used: results.hintsUsed || 0,
+          completed_at: new Date().toISOString(),
+        };
+        
+        const { error } = await supabase
+          .from('assessment_attempts')
+          .insert([attemptData]);
+          
+        if (error) {
+          console.error('Error saving attempt:', error);
+        } else {
+          // Refresh attempts
+          setAttempts(prev => [attemptData as AssessmentAttempt, ...prev]);
+        }
+      } catch (err) {
+        console.error('Failed to save assessment attempt:', err);
+      }
+    }
   };
   
   const handleExitAssessment = () => {
@@ -199,9 +347,7 @@ export function AssessmentPage() {
         </Button>
         
         <AssessmentEngine
-          assessmentId={selectedAssessment.id}
-          experimentId={experimentId}
-          assessmentType={selectedAssessment.assessment_type as 'pre_lab' | 'post_lab' | 'checkpoint'}
+          assessment={selectedAssessment}
           onComplete={handleAssessmentComplete}
           onExit={handleExitAssessment}
         />
@@ -226,55 +372,147 @@ export function AssessmentPage() {
         <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Assessments</h3>
         <p className="text-gray-600 mb-4">{error}</p>
-        <Button onClick={() => navigate(-1)}>
+        <Button onClick={() => navigate(`/experiment/${experimentSlug}`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Go Back
+          Back to Experiment
         </Button>
       </div>
     );
   }
   
   return (
-    <div className="space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <Button
+          variant="ghost"
+          onClick={() => navigate(`/experiment/${experimentSlug}`)}
+          className="mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Experiment
+        </Button>
+        
+        <div className="flex items-center space-x-3 mb-6">
+          {assessmentType === 'pre_lab' && <Brain className="h-8 w-8 text-blue-600" />}
+          {assessmentType === 'post_lab' && <Award className="h-8 w-8 text-green-600" />}
+          {assessmentType === 'checkpoint' && <CheckSquare className="h-8 w-8 text-orange-600" />}
+          
           <div>
-            <Button
-              variant="ghost"
-              onClick={() => navigate(-1)}
-              className="mb-2"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            
             <h1 className="text-3xl font-bold tracking-tight">
-              {assessmentType?.replace('_', ' ')} Assessments
+              {getAssessmentTitle(assessmentType || 'pre_lab')}
             </h1>
             <p className="text-muted-foreground">
-              {assessmentType === 'pre_lab' && 'Prepare for your lab experiment with these pre-lab assessments'}
-              {assessmentType === 'post_lab' && 'Test your understanding after completing the lab experiment'}
-              {assessmentType === 'checkpoint' && 'Check your progress during the experiment'}
+              {getAssessmentDescription(assessmentType || 'pre_lab')}
             </p>
           </div>
         </div>
+      </motion.div>
+      
+      {/* Assessment Overview */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="grid gap-4 md:grid-cols-3"
+      >
+        <Card>
+          <CardContent className="p-6 text-center">
+            <div className="text-2xl font-bold text-blue-600">{assessmentData.length}</div>
+            <div className="text-sm text-gray-500">Available Assessments</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6 text-center">
+            <div className="text-2xl font-bold text-green-600">{getTimeLimit(assessmentType || 'pre_lab')}</div>
+            <div className="text-sm text-gray-500">Minutes Time Limit</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6 text-center">
+            <div className="text-2xl font-bold text-purple-600">{getPassingScore(assessmentType || 'pre_lab')}%</div>
+            <div className="text-sm text-gray-500">Passing Score</div>
+          </CardContent>
+        </Card>
       </motion.div>
       
       {/* Assessment List */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
       >
-        <AssessmentList
-          experimentId={experimentId}
-          assessmentType={validAssessmentType as 'pre_lab' | 'post_lab' | 'checkpoint'}
-          onSelectAssessment={handleSelectAssessment}
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BookOpen className="h-5 w-5 mr-2" />
+              Available Assessments
+            </CardTitle>
+            <CardDescription>
+              Select an assessment to begin
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {assessmentData.length > 0 ? (
+              <div className="space-y-4">
+                {assessmentData.map((assessment) => (
+                  <Card key={assessment.id} className="hover:shadow-md transition-shadow cursor-pointer">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg mb-2">{assessment.title}</h3>
+                          <p className="text-gray-600 mb-4">{assessment.description}</p>
+                          
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <div className="flex items-center">
+                              <CheckSquare className="h-4 w-4 mr-1" />
+                              {assessment.questions?.length || 0} Questions
+                            </div>
+                            <div className="flex items-center">
+                              <Clock className="h-4 w-4 mr-1" />
+                              {assessment.time_limit_minutes} minutes
+                            </div>
+                            <div className="flex items-center">
+                              <Award className="h-4 w-4 mr-1" />
+                              {assessment.passing_score}% to pass
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2 mt-4">
+                            <Badge variant="outline">
+                              Difficulty: {assessment.difficulty}/5
+                            </Badge>
+                            <Badge variant="outline">
+                              Max Attempts: {assessment.max_attempts}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        <Button 
+                          onClick={() => handleSelectAssessment(assessment)}
+                          className="ml-4"
+                        >
+                          Start Assessment
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No assessments available yet</p>
+                <p className="text-sm text-gray-400 mt-1">Check back later for new assessments</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
       
       {/* Recent Attempts */}
@@ -282,7 +520,7 @@ export function AssessmentPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
         >
           <Card>
             <CardHeader>
@@ -302,7 +540,7 @@ export function AssessmentPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="font-semibold">
-                            {attempt.assessment_id}
+                            {getAssessmentTitle(assessmentType || 'pre_lab')}
                           </h3>
                           <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
                             <div className="flex items-center">
@@ -316,13 +554,18 @@ export function AssessmentPage() {
                                 : 'N/A'}
                             </div>
                           </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Completed: {new Date(attempt.completed_at).toLocaleDateString()}
+                          </div>
                         </div>
                         
                         <div>
                           <Badge className={`
-                            ${attempt.percentage >= 70 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
+                            ${attempt.percentage >= getPassingScore(assessmentType || 'pre_lab') 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'}
                           `}>
-                            {attempt.percentage.toFixed(1)}%
+                            {attempt.percentage?.toFixed(1) || 0}%
                           </Badge>
                         </div>
                       </div>
