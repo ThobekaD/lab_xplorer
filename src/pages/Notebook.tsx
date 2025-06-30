@@ -311,7 +311,7 @@ export function Notebook() {
                             </div>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm">
+                        <Button className="w-full text-white" size="sm">
                           <ArrowRight className="h-4 w-4" />
                         </Button>
                       </div>
