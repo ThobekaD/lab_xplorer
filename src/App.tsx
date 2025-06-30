@@ -23,6 +23,12 @@ import { ProfileManagement } from '@/components/auth/ProfileManagement';
 import { AssessmentPage } from '@/pages/AssessmentPage';
 import { Achievements } from '@/pages/Achievements';
 import { SubscriptionPage } from '@/pages/SubscriptionPage';
+// AppRouter.tsx (or wherever your <Routes> live)
+<Route
+  path="/experiments/:experimentId/assessment/:assessmentType"
+  element={<AssessmentPage />}
+/>
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
