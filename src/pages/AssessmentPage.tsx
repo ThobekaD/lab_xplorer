@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, CheckSquare, Clock, AlertTriangle, Award, Loader2, Brain, BookOpen } from 'lucide-react';
 import { AssessmentEngine } from '@/components/assessment/AssessmentEngine';
-import { AssessmentList } from '@/components/assessment/AssessmentList';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { supabase } from '@/lib/supabase';
 import type { Assessment, AssessmentAttempt } from '@/types/assessment';
@@ -138,30 +137,6 @@ export function AssessmentPage() {
     fetchAssessments();
   }, [experimentId, assessmentType]);
   
-  // Fetch attempts if user is logged in
-  useEffect(() => {
-    const fetchAttempts = async () => {
-      if (!user?.id || !selectedAssessment) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from('assessment_attempts')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('assessment_id', selectedAssessment.id)
-          .order('completed_at', { ascending: false });
-          
-        if (error) throw error;
-        
-        setAttempts(data || []);
-      } catch (err) {
-        console.error('Error fetching attempts:', err);
-      }
-    };
-    
-    fetchAttempts();
-  }, [user?.id, selectedAssessment]);
-  
   const createMockAssessment = (expId: string, type: string): Assessment => {
     const mockQuestions = generateMockQuestions(type);
     
@@ -198,6 +173,7 @@ export function AssessmentPage() {
         points: 1,
         difficulty: 1,
         topic: "Laboratory Fundamentals",
+        hints: ["Think about all the different aspects of lab work that contribute to learning"]
       },
       {
         id: `q2-${type}`,
@@ -214,8 +190,9 @@ export function AssessmentPage() {
         points: 1,
         difficulty: 1,
         topic: "Laboratory Safety",
+        hints: ["Safety requires protection for both eyes and clothing"]
       },
-      {
+              {
         id: `q3-${type}`,
         question_text: "What should you do if you spill a chemical?",
         question_type: "multiple_choice" as const,
@@ -230,20 +207,36 @@ export function AssessmentPage() {
         points: 1,
         difficulty: 2,
         topic: "Emergency Procedures",
+        hints: ["Safety incidents should always involve proper authority figures"]
+      },
+      {
+        id: `q4-${type}`,
+        question_text: "Calculate the molarity of a solution containing 58.5g of NaCl dissolved in 2L of water. (Molecular weight of NaCl = 58.5 g/mol)",
+        question_type: "numerical" as const,
+        options: [],
+        correct_answer: "0.5",
+        explanation: "Molarity = moles/volume. Moles = 58.5g ÷ 58.5 g/mol = 1 mol. Molarity = 1 mol ÷ 2L = 0.5 M",
+        points: 2,
+        difficulty: 3,
+        topic: "Solution Chemistry",
+        unit: "M",
+        tolerance: 0.05,
+        hints: ["Remember: Molarity = moles of solute / liters of solution"]
       }
     ];
     
     if (type === 'post_lab') {
       baseQuestions.push({
-        id: `q4-${type}`,
-        question_text: "What was the most important concept you learned in this experiment?",
+        id: `q5-${type}`,
+        question_text: "Describe the most important concept you learned in this experiment and how it relates to real-world applications.",
         question_type: "short_answer" as const,
         options: [],
-        correct_answer: "Understanding of experimental methodology and data analysis",
-        explanation: "Post-lab reflections help consolidate learning and identify key concepts.",
-        points: 2,
+        correct_answer: ["experimental methodology", "data analysis", "scientific method", "real-world applications"],
+        explanation: "Post-lab reflections help consolidate learning and identify key concepts that connect to practical applications.",
+        points: 3,
         difficulty: 2,
-        topic: "Reflection",
+        topic: "Reflection and Application",
+        hints: ["Think about how laboratory techniques apply outside the classroom"]
       });
     }
     
@@ -272,16 +265,13 @@ export function AssessmentPage() {
           completed_at: new Date().toISOString(),
         };
         
-        const { error } = await supabase
-          .from('assessment_attempts')
-          .insert([attemptData]);
-          
-        if (error) {
-          console.error('Error saving attempt:', error);
-        } else {
-          // Refresh attempts
-          setAttempts(prev => [attemptData as AssessmentAttempt, ...prev]);
-        }
+        // In production, save to database
+        // const { error } = await supabase
+        //   .from('assessment_attempts')
+        //   .insert([attemptData]);
+        
+        // For now, just update local state
+        setAttempts(prev => [attemptData as AssessmentAttempt, ...prev]);
       } catch (err) {
         console.error('Failed to save assessment attempt:', err);
       }
@@ -291,12 +281,6 @@ export function AssessmentPage() {
   const handleExitAssessment = () => {
     setSelectedAssessment(null);
   };
-  
-  const validAssessmentType = assessmentType === 'pre_lab' || 
-                             assessmentType === 'post_lab' || 
-                             assessmentType === 'checkpoint'
-    ? assessmentType
-    : 'pre_lab';
   
   function getAssessmentTitle(type: string) {
     switch (type) {
@@ -534,8 +518,8 @@ export function AssessmentPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {attempts.slice(0, 3).map((attempt) => (
-                  <Card key={attempt.id} className="hover:shadow-md transition-shadow">
+                {attempts.slice(0, 3).map((attempt, index) => (
+                  <Card key={attempt.id || index} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div>
